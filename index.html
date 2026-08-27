@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ScanGeheugen</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --card: #ffffff;
+    --text: #1c1b19;
+    --muted: #6b6862;
+    --border: #e5e2da;
+    --accent: #5b6d5b;
+    --accent-text: #ffffff;
+    --danger: #b1453f;
+    --star: #d9a441;
+    --star-off: #d8d5cd;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a;
+      --card: #212225;
+      --text: #ede9e2;
+      --muted: #9a968d;
+      --border: #34363a;
+      --accent: #8faa8b;
+      --accent-text: #12130f;
+      --danger: #e08078;
+      --star: #e3b358;
+      --star-off: #3b3c3e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .app { max-width: 480px; margin: 0 auto; padding: 16px 16px 80px; }
+  header.topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 0 18px;
+  }
+  header.topbar h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+  header.topbar .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 10px;
+    padding: 12px 16px; background: var(--accent); color: var(--accent-text);
+    font-weight: 600;
+  }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+  button.danger { background: var(--danger); color: #fff; }
+  button.ghost { background: transparent; color: var(--accent); padding: 8px 10px; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, textarea {
+    width: 100%; font: inherit; padding: 12px 13px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+  }
+  label { font-size: 13px; color: var(--muted); display: block; margin: 14px 0 6px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 14px;
+  }
+  .hidden { display: none !important; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .center { text-align: center; }
+  .error { color: var(--danger); font-size: 13px; margin-top: 8px; }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  .scan-cta {
+    width: 100%; padding: 22px; font-size: 17px; border-radius: 18px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .manual-entry { display: flex; gap: 8px; margin-top: 10px; }
+
+  .scan-list-item {
+    display: flex; gap: 12px; align-items: center; padding: 10px 0;
+    border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .scan-list-item:last-child { border-bottom: none; }
+  .thumb {
+    width: 46px; height: 46px; border-radius: 8px; background: var(--border);
+    object-fit: cover; flex-shrink: 0;
+  }
+  .thumb-fallback {
+    width: 46px; height: 46px; border-radius: 8px; background: var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+    flex-shrink: 0; color: var(--muted);
+  }
+  .item-main { flex: 1; min-width: 0; }
+  .item-main .name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-main .meta { font-size: 12px; color: var(--muted); }
+  .stars { color: var(--star); font-size: 14px; white-space: nowrap; }
+
+  #scannerOverlay {
+    position: fixed; inset: 0; background: #000; z-index: 50;
+    display: flex; flex-direction: column;
+  }
+  #scannerVideo { flex: 1; width: 100%; object-fit: cover; }
+  .scanner-topbar {
+    position: absolute; top: 0; left: 0; right: 0; padding: 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(rgba(0,0,0,.55), transparent);
+    z-index: 2;
+  }
+  .scanner-topbar button { background: rgba(255,255,255,.15); color: #fff; }
+  .scan-frame {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 78%; max-width: 340px; height: 120px;
+    border: 3px solid rgba(255,255,255,.85); border-radius: 14px;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,.35);
+  }
+  .scanner-hint {
+    position: absolute; bottom: 30px; left: 0; right: 0; text-align: center;
+    color: #fff; font-size: 14px; padding: 0 20px;
+  }
+
+  .star-picker { display: flex; gap: 6px; font-size: 34px; }
+  .star-picker span { cursor: pointer; color: var(--star-off); }
+  .star-picker span.on { color: var(--star); }
+
+  .toggle-group { display: flex; gap: 8px; }
+  .toggle-group button { flex: 1; background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+  .toggle-group button.selected { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+  .history-entry { border-top: 1px solid var(--border); padding: 12px 0; }
+  .history-entry:first-child { border-top: none; padding-top: 0; }
+  .history-entry .stars { font-size: 16px; }
+  .history-entry .hdate { font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .history-entry .hnote { font-size: 14px; margin-top: 4px; }
+  .history-entry .hprice { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .summary-box { text-align: center; padding: 6px 0 2px; }
+  .summary-box .big { font-size: 30px; font-weight: 700; }
+  .summary-box .stars { font-size: 20px; display: block; margin: 2px 0; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 30px;
+    font-size: 13px; z-index: 100; opacity: 0; transition: opacity .25s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  .spinner {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    animation: spin .7s linear infinite; margin: 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- AUTH VIEW -->
+  <div id="view-auth" class="hidden">
+    <header class="topbar">
+      <div>
+        <h1>ScanGeheugen</h1>
+        <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
+      </div>
+    </header>
+    <div class="card">
+      <div class="stack">
+        <div>
+          <label>E-mailadres</label>
+          <input id="authEmail" type="email" autocomplete="email" placeholder="jij@voorbeeld.nl">
+        </div>
+        <div>
+          <label>Wachtwoord</label>
+          <input id="authPassword" type="password" autocomplete="current-password" placeholder="Minimaal 6 tekens">
+        </div>
+        <button id="btnSignIn">Inloggen</button>
+        <button id="btnSignUp" class="secondary">Account aanmaken</button>
+        <div id="authError" class="error hidden"></div>
+        <div id="authInfo" class="muted hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOME VIEW -->
+  <div id="view-home" class="hidden">
+    <header class="topbar">
+      <div>
+        <h1>ScanGeheugen</h1>
+        <div class="sub" id="homeGreeting"></div>
+      </div>
+      <button class="ghost" id="btnSignOut">Uitloggen</button>
+    </header>
+
+    <button class="scan-cta" id="btnOpenScanner">📷 Scan een barcode</button>
+    <div class="manual-entry">
+      <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
+      <button class="secondary" id="btnManualLookup">Zoek</button>
+    </div>
+
+    <div class="card" style="margin-top:18px;">
+      <label style="margin-top:0;">Zoeken in jouw producten</label>
+      <input id="searchBox" type="text" placeholder="Naam of merk...">
+    </div>
+
+    <div class="card">
+      <div id="recentList"></div>
+      <div id="recentEmpty" class="muted center hidden" style="padding: 10px 0;">Nog niets gescand. Scan je eerste product hierboven!</div>
+      <div id="recentLoading" class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- PRODUCT VIEW -->
+  <div id="view-product" class="hidden">
+    <header class="topbar">
+      <button class="ghost" id="btnBackHome">← Terug</button>
+    </header>
+
+    <div class="card" id="productHeaderCard">
+      <div class="row" style="align-items:flex-start;">
+        <img id="productImage" class="thumb hidden" style="width:64px;height:64px;">
+        <div class="thumb-fallback" id="productImageFallback" style="width:64px;height:64px;font-size:24px;">📦</div>
+        <div style="flex:2;">
+          <div id="productNameDisplay" style="font-weight:700; font-size:16px;"></div>
+          <div id="productBrandDisplay" class="muted"></div>
+          <div id="productEanDisplay" class="muted" style="font-size:11px; margin-top:2px;"></div>
+        </div>
+      </div>
+      <div id="manualNameEntry" class="hidden" style="margin-top:12px;">
+        <label style="margin-top:0;">Dit product kennen we nog niet — vul de naam in</label>
+        <input id="manualProductName" placeholder="Productnaam">
+        <label>Merk (optioneel)</label>
+        <input id="manualProductBrand" placeholder="Merk">
+      </div>
+    </div>
+
+    <div class="card hidden" id="historyCard">
+      <div class="summary-box">
+        <span class="stars" id="summaryStars"></span>
+        <span class="big" id="summaryAvg"></span>
+        <div class="muted" id="summaryCount"></div>
+      </div>
+      <div id="historyList" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:600; margin-bottom:4px;" id="reviewFormTitle">Nieuwe beoordeling</div>
+      <label style="margin-top:8px;">Hoe was het?</label>
+      <div class="star-picker" id="starPicker">
+        <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
+      </div>
+      <label>Zou je het opnieuw kopen?</label>
+      <div class="toggle-group" id="buyAgainGroup">
+        <button type="button" data-v="true">Ja</button>
+        <button type="button" data-v="null">Twijfel</button>
+        <button type="button" data-v="false">Nee</button>
+      </div>
+      <label>Notitie</label>
+      <textarea id="reviewNote" rows="3" placeholder="Bijv. te zoet, prima prijs-kwaliteit, niet meer kopen..."></textarea>
+      <div class="row">
+        <div>
+          <label>Prijs (optioneel)</label>
+          <input id="reviewPrice" type="number" step="0.01" min="0" placeholder="€">
+        </div>
+        <div>
+          <label>Datum</label>
+          <input id="reviewDate" type="date">
+        </div>
+      </div>
+      <div id="productError" class="error hidden"></div>
+      <button id="btnSaveReview" style="margin-top:16px; width:100%;">Opslaan</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- SCANNER OVERLAY -->
+<div id="scannerOverlay" class="hidden">
+  <div class="scanner-topbar">
+    <button id="btnCloseScanner">✕ Sluiten</button>
+    <span style="color:#fff; font-size:13px;">Richt op de barcode</span>
+    <span style="width:70px;"></span>
+  </div>
+  <video id="scannerVideo" autoplay muted playsinline></video>
+  <div class="scan-frame"></div>
+  <div class="scanner-hint" id="scannerHint">Camera wordt gestart...</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+const SUPABASE_URL = "https://wrtmzrlobbkuyrdnxejr.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndydG16cmxvYmJrdXlyZG54ZWpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NDI2ODksImV4cCI6MjEwMzQxODY4OX0.cuKZSb_LU9H-mwj9sdJ1jS61F71Z3ligqkJZ4iKKBnw";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let currentEan = null;
+let currentProduct = null;
+let selectedRating = 0;
+let selectedBuyAgain = undefined;
+let codeReader = null;
+let allRecent = [];
+
+// ---------- helpers ----------
+function $(id) { return document.getElementById(id); }
+function show(id) { $(id).classList.remove('hidden'); }
+function hide(id) { $(id).classList.add('hidden'); }
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+function starsStr(n) {
+  const r = Math.round(n);
+  return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
+}
+function switchView(name) {
+  ['auth', 'home', 'product'].forEach(v => hide('view-' + v));
+  show('view-' + name);
+}
+
+// ---------- auth ----------
+$('btnSignIn').addEventListener('click', async () => {
+  hide('authError');
+  const email = $('authEmail').value.trim();
+  const password = $('authPassword').value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { $('authError').textContent = error.message; show('authError'); }
+});
+
+$('btnSignUp').addEventListener('click', async () => {
+  hide('authError'); hide('authInfo');
+  const email = $('authEmail').value.trim();
+  const password = $('authPassword').value;
+  if (password.length < 6) {
+    $('authError').textContent = 'Wachtwoord moet minimaal 6 tekens zijn.';
+    show('authError');
+    return;
+  }
+  const { error } = await sb.auth.signUp({ email, password });
+  if (error) { $('authError').textContent = error.message; show('authError'); return; }
+  $('authInfo').textContent = 'Account aangemaakt! Check je mail als bevestiging nodig is, en log daarna in.';
+  show('authInfo');
+});
+
+$('btnSignOut').addEventListener('click', async () => {
+  await sb.auth.signOut();
+});
+
+sb.auth.onAuthStateChange((event, session) => {
+  currentUser = session ? session.user : null;
+  if (currentUser) {
+    $('homeGreeting').textContent = currentUser.email;
+    switchView('home');
+    loadRecent();
+  } else {
+    switchView('auth');
+  }
+});
+
+// ---------- home / recent list ----------
+async function loadRecent() {
+  show('recentLoading');
+  hide('recentEmpty');
+  $('recentList').innerHTML = '';
+  const { data, error } = await sb
+    .from('reviews')
+    .select('id, ean, rating, would_buy_again, note, price, purchased_at, created_at, products(name, brand, image_url)')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  hide('recentLoading');
+  if (error) { toast('Kon geschiedenis niet laden: ' + error.message); return; }
+
+  // group by ean, keep most recent review + avg rating per ean
+  const byEan = new Map();
+  for (const r of data) {
+    if (!byEan.has(r.ean)) {
+      byEan.set(r.ean, { ean: r.ean, product: r.products, ratings: [], latest: r.created_at, mostRecentNote: r.note });
+    }
+    byEan.get(r.ean).ratings.push(r.rating);
+  }
+  allRecent = Array.from(byEan.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
+  renderRecent(allRecent);
+}
+
+function renderRecent(list) {
+  const container = $('recentList');
+  container.innerHTML = '';
+  if (list.length === 0) { show('recentEmpty'); return; }
+  hide('recentEmpty');
+  for (const item of list) {
+    const avg = item.ratings.reduce((a, b) => a + b, 0) / item.ratings.length;
+    const div = document.createElement('div');
+    div.className = 'scan-list-item';
+    const name = item.product ? item.product.name : item.ean;
+    const brand = item.product && item.product.brand ? item.product.brand : '';
+    const img = item.product && item.product.image_url;
+    div.innerHTML = `
+      ${img ? `<img class="thumb" src="${img}">` : `<div class="thumb-fallback">📦</div>`}
+      <div class="item-main">
+        <div class="name">${escapeHtml(name)}</div>
+        <div class="meta">${escapeHtml(brand)}${brand ? ' · ' : ''}${item.ratings.length}x gekocht</div>
+      </div>
+      <div class="stars">${starsStr(avg)}</div>
+    `;
+    div.addEventListener('click', () => lookupAndOpen(item.ean));
+    container.appendChild(div);
+  }
+}
+
+$('searchBox').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  if (!q) { renderRecent(allRecent); return; }
+  renderRecent(allRecent.filter(item => {
+    const name = (item.product && item.product.name || '').toLowerCase();
+    const brand = (item.product && item.product.brand || '').toLowerCase();
+    return name.includes(q) || brand.includes(q) || item.ean.includes(q);
+  }));
+});
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+$('btnBackHome').addEventListener('click', () => { switchView('home'); loadRecent(); });
+
+// ---------- scanner ----------
+$('btnOpenScanner').addEventListener('click', openScanner);
+$('btnCloseScanner').addEventListener('click', closeScanner);
+
+async function openScanner() {
+  show('scannerOverlay');
+  $('scannerHint').textContent = 'Camera wordt gestart...';
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E
+  ]);
+  codeReader = new ZXing.BrowserMultiFormatReader(hints);
+  try {
+    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+    const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+    codeReader.decodeFromVideoDevice(backCam ? backCam.deviceId : undefined, 'scannerVideo', (result, err) => {
+      if (result) {
+        handleScanResult(result.getText());
+      }
+    });
+    $('scannerHint').textContent = 'Richt de camera op de barcode';
+  } catch (e) {
+    $('scannerHint').textContent = 'Kon camera niet openen: ' + e.message;
+  }
+}
+
+function closeScanner() {
+  if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
+  hide('scannerOverlay');
+}
+
+function handleScanResult(ean) {
+  closeScanner();
+  toast('Gescand: ' + ean);
+  lookupAndOpen(ean);
+}
+
+$('btnManualLookup').addEventListener('click', () => {
+  const ean = $('manualEan').value.trim();
+  if (!ean) return;
+  lookupAndOpen(ean);
+});
+
+// ---------- product lookup ----------
+async function lookupAndOpen(ean) {
+  currentEan = ean;
+  switchView('product');
+  resetProductForm();
+  $('productNameDisplay').textContent = 'Zoeken...';
+  $('productBrandDisplay').textContent = '';
+  $('productEanDisplay').textContent = ean;
+  hide('historyCard');
+  hide('manualNameEntry');
+
+  // 1. check own cache
+  let { data: existing } = await sb.from('products').select('*').eq('ean', ean).maybeSingle();
+  if (existing) {
+    currentProduct = existing;
+    renderProductHeader(existing);
+    loadHistory(ean);
+    return;
+  }
+
+  // 2. try Open Food Facts
+  let product = await tryFetch(`https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,image_url,categories`);
+  let name = product && product.status === 1 ? product.product.product_name : null;
+  let brand = product && product.status === 1 ? product.product.brands : null;
+  let image = product && product.status === 1 ? product.product.image_url : null;
+
+  // 3. try Open Products Facts if not found
+  if (!name) {
+    let p2 = await tryFetch(`https://world.openproductsfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,image_url`);
+    if (p2 && p2.status === 1) {
+      name = p2.product.product_name;
+      brand = p2.product.brands;
+      image = p2.product.image_url;
+    }
+  }
+
+  if (name) {
+    currentProduct = { ean, name, brand, image_url: image, source: 'openfoodfacts' };
+    await sb.from('products').upsert(currentProduct);
+    renderProductHeader(currentProduct);
+    loadHistory(ean);
+  } else {
+    currentProduct = { ean, name: null, brand: null, image_url: null, source: 'manual' };
+    renderProductHeader(currentProduct);
+    show('manualNameEntry');
+    loadHistory(ean);
+  }
+}
+
+async function tryFetch(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) { return null; }
+}
+
+function renderProductHeader(p) {
+  if (p.image_url) {
+    $('productImage').src = p.image_url;
+    show('productImage'); hide('productImageFallback');
+  } else {
+    hide('productImage'); show('productImageFallback');
+  }
+  $('productNameDisplay').textContent = p.name || 'Onbekend product';
+  $('productBrandDisplay').textContent = p.brand || '';
+  $('productEanDisplay').textContent = p.ean;
+}
+
+async function loadHistory(ean) {
+  const { data, error } = await sb
+    .from('reviews')
+    .select('*')
+    .eq('ean', ean)
+    .order('purchased_at', { ascending: false });
+  if (error || !data || data.length === 0) { hide('historyCard'); return; }
+
+  const avg = data.reduce((a, b) => a + b.rating, 0) / data.length;
+  $('summaryStars').textContent = starsStr(avg);
+  $('summaryAvg').textContent = avg.toFixed(1);
+  $('summaryCount').textContent = `Gemiddeld over ${data.length} keer gekocht`;
+
+  const list = $('historyList');
+  list.innerHTML = '';
+  for (const r of data) {
+    const div = document.createElement('div');
+    div.className = 'history-entry';
+    const buyAgainLabel = r.would_buy_again === true ? '✅ opnieuw kopen' : r.would_buy_again === false ? '❌ niet opnieuw' : '🤔 twijfel';
+    div.innerHTML = `
+      <span class="stars">${starsStr(r.rating)}</span>
+      <span class="hdate">${formatDate(r.purchased_at)} · ${buyAgainLabel}</span>
+      ${r.note ? `<div class="hnote">${escapeHtml(r.note)}</div>` : ''}
+      ${r.price ? `<div class="hprice">€ ${Number(r.price).toFixed(2)}</div>` : ''}
+    `;
+    list.appendChild(div);
+  }
+  show('historyCard');
+}
+
+function formatDate(d) {
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ---------- review form ----------
+function resetProductForm() {
+  selectedRating = 0;
+  selectedBuyAgain = undefined;
+  document.querySelectorAll('#starPicker span').forEach(s => s.classList.remove('on'));
+  document.querySelectorAll('#buyAgainGroup button').forEach(b => b.classList.remove('selected'));
+  $('reviewNote').value = '';
+  $('reviewPrice').value = '';
+  $('reviewDate').value = new Date().toISOString().slice(0, 10);
+  hide('productError');
+  $('manualProductName').value = '';
+  $('manualProductBrand').value = '';
+}
+
+$('starPicker').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'SPAN') return;
+  selectedRating = Number(e.target.dataset.v);
+  document.querySelectorAll('#starPicker span').forEach(s => {
+    s.classList.toggle('on', Number(s.dataset.v) <= selectedRating);
+  });
+});
+
+$('buyAgainGroup').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') return;
+  const v = e.target.dataset.v;
+  selectedBuyAgain = v === 'true' ? true : v === 'false' ? false : null;
+  document.querySelectorAll('#buyAgainGroup button').forEach(b => b.classList.remove('selected'));
+  e.target.classList.add('selected');
+});
+
+$('btnSaveReview').addEventListener('click', async () => {
+  hide('productError');
+  if (!selectedRating) {
+    $('productError').textContent = 'Kies een aantal sterren.';
+    show('productError');
+    return;
+  }
+
+  // if product unknown, require manual name and save it
+  if (!currentProduct.name) {
+    const manualName = $('manualProductName').value.trim();
+    if (!manualName) {
+      $('productError').textContent = 'Vul een productnaam in.';
+      show('productError');
+      return;
+    }
+    currentProduct = {
+      ean: currentEan,
+      name: manualName,
+      brand: $('manualProductBrand').value.trim() || null,
+      image_url: null,
+      source: 'manual'
+    };
+    const { error: upErr } = await sb.from('products').upsert(currentProduct);
+    if (upErr) {
+      $('productError').textContent = 'Kon product niet opslaan: ' + upErr.message;
+      show('productError');
+      return;
+    }
+  }
+
+  const btn = $('btnSaveReview');
+  btn.disabled = true;
+  const { error } = await sb.from('reviews').insert({
+    user_id: currentUser.id,
+    ean: currentEan,
+    rating: selectedRating,
+    would_buy_again: selectedBuyAgain === undefined ? null : selectedBuyAgain,
+    note: $('reviewNote').value.trim() || null,
+    price: $('reviewPrice').value ? Number($('reviewPrice').value) : null,
+    purchased_at: $('reviewDate').value || new Date().toISOString().slice(0, 10)
+  });
+  btn.disabled = false;
+
+  if (error) {
+    $('productError').textContent = 'Opslaan mislukt: ' + error.message;
+    show('productError');
+    return;
+  }
+  toast('Beoordeling opgeslagen!');
+  renderProductHeader(currentProduct);
+  hide('manualNameEntry');
+  loadHistory(currentEan);
+  resetProductForm();
+});
+
+// ---------- init ----------
+(async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  currentUser = session ? session.user : null;
+  if (currentUser) {
+    $('homeGreeting').textContent = currentUser.email;
+    switchView('home');
+    loadRecent();
+  } else {
+    switchView('auth');
+  }
+})();
+</script>
+</body>
+</html>
