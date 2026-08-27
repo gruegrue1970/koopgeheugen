@@ -444,17 +444,22 @@ async function openScanner() {
     ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E
   ]);
   codeReader = new ZXing.BrowserMultiFormatReader(hints);
+  const constraints = { video: { facingMode: { ideal: 'environment' } } };
   try {
-    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
-    const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
-    codeReader.decodeFromVideoDevice(backCam ? backCam.deviceId : undefined, 'scannerVideo', (result, err) => {
+    await codeReader.decodeFromConstraints(constraints, 'scannerVideo', (result, err) => {
       if (result) {
         handleScanResult(result.getText());
       }
     });
     $('scannerHint').textContent = 'Richt de camera op de barcode';
   } catch (e) {
-    $('scannerHint').textContent = 'Kon camera niet openen: ' + e.message;
+    let msg = 'Kon camera niet openen: ' + (e && e.message ? e.message : e);
+    if (e && e.name === 'NotAllowedError') {
+      msg = 'Camera-toegang is geblokkeerd. Tik op het slotje naast de adresbalk, zet Camera op "Toestaan" en probeer opnieuw.';
+    } else if (e && e.name === 'NotFoundError') {
+      msg = 'Geen camera gevonden op dit toestel.';
+    }
+    $('scannerHint').textContent = msg;
   }
 }
 
