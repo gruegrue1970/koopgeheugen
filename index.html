@@ -305,6 +305,7 @@ let currentProduct = null;
 let selectedRating = 0;
 let selectedBuyAgain = undefined;
 let codeReader = null;
+let currentStream = null;
 let allRecent = [];
 
 // ---------- helpers ----------
@@ -444,9 +445,21 @@ async function openScanner() {
     ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E
   ]);
   codeReader = new ZXing.BrowserMultiFormatReader(hints);
-  const constraints = { video: { facingMode: { ideal: 'environment' } } };
+  const constraints = {
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
+    }
+  };
   try {
-    await codeReader.decodeFromConstraints(constraints, 'scannerVideo', (result, err) => {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    currentStream = stream;
+    await applyContinuousFocus(stream);
+    const video = $('scannerVideo');
+    video.srcObject = stream;
+    await video.play();
+    codeReader.decodeFromVideoElement(video, (result, err) => {
       if (result) {
         handleScanResult(result.getText());
       }
@@ -463,8 +476,23 @@ async function openScanner() {
   }
 }
 
+async function applyContinuousFocus(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track || !track.getCapabilities) return;
+  const caps = track.getCapabilities();
+  if (caps.focusMode && caps.focusMode.includes('continuous')) {
+    try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+  }
+}
+
+$('scannerVideo').addEventListener('click', () => {
+  if (currentStream) applyContinuousFocus(currentStream);
+});
+
 function closeScanner() {
   if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
+  if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+  $('scannerVideo').srcObject = null;
   hide('scannerOverlay');
 }
 
