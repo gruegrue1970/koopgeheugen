@@ -534,19 +534,13 @@ async function takeStillPhoto() {
 
 async function decodeBlobForBarcode(blob) {
   showPhotoDebug('Foto genomen (' + Math.round(blob.size / 1024) + ' KB), laden...');
-  const url = URL.createObjectURL(blob);
-  const img = new Image();
   try {
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = () => reject(new Error('kon de foto niet laden'));
-      img.src = url;
-    });
-    showPhotoDebug('Foto geladen (' + img.naturalWidth + 'x' + img.naturalHeight + '), barcode zoeken...');
+    const bitmap = await createImageBitmap(blob);
+    showPhotoDebug('Foto geladen (' + bitmap.width + 'x' + bitmap.height + '), barcode zoeken...');
     const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvas.getContext('2d').drawImage(img, 0, 0);
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
     const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
     const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
     const reader = new ZXing.BrowserMultiFormatReader();
@@ -555,8 +549,6 @@ async function decodeBlobForBarcode(blob) {
     handleScanResult(result.getText());
   } catch (err) {
     showPhotoDebug('Geen barcode gevonden (' + (err && err.message ? err.message : 'onbekende fout') + '). Probeer opnieuw scherp te stellen en nog een foto.');
-  } finally {
-    URL.revokeObjectURL(url);
   }
 }
 
