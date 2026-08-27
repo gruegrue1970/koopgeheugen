@@ -198,6 +198,10 @@
 
     <button class="scan-cta" id="btnOpenScanner">📷 Scan een barcode</button>
     <div class="manual-entry">
+      <button class="secondary" id="btnPhotoScan" style="flex:1;">📸 Of maak een foto van de code</button>
+    </div>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
+    <div class="manual-entry">
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
       <button class="secondary" id="btnManualLookup">Zoek</button>
     </div>
@@ -288,6 +292,7 @@
   <video id="scannerVideo" autoplay muted playsinline></video>
   <div class="scan-frame"></div>
   <div class="scanner-hint" id="scannerHint">Camera wordt gestart...</div>
+  <button id="btnScannerPhotoFallback" class="secondary" style="position:absolute; bottom:70px; left:50%; transform:translateX(-50%); background:rgba(255,255,255,.9);">Lukt scherpstellen niet? Maak een foto</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -501,6 +506,30 @@ function handleScanResult(ean) {
   toast('Gescand: ' + ean);
   lookupAndOpen(ean);
 }
+
+// ---------- photo fallback (native camera, better focus than live video) ----------
+$('btnPhotoScan').addEventListener('click', () => $('photoInput').click());
+$('btnScannerPhotoFallback').addEventListener('click', () => {
+  closeScanner();
+  $('photoInput').click();
+});
+
+$('photoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  $('photoInput').value = '';
+  if (!file) return;
+  toast('Foto verwerken...');
+  const url = URL.createObjectURL(file);
+  try {
+    const reader = new ZXing.BrowserMultiFormatReader();
+    const result = await reader.decodeFromImageUrl(url);
+    handleScanResult(result.getText());
+  } catch (e) {
+    toast('Geen barcode gevonden in de foto, probeer het nog eens.');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+});
 
 $('btnManualLookup').addEventListener('click', () => {
   const ean = $('manualEan').value.trim();
