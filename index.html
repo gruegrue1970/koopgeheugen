@@ -166,6 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v6</div>
       </div>
     </header>
     <div class="card">
@@ -361,7 +362,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email;
+    $('homeGreeting').textContent = currentUser.email + ' · build v6';
     switchView('home');
     loadRecent();
   } else {
@@ -767,7 +768,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email;
+    $('homeGreeting').textContent = currentUser.email + ' · build v6';
     switchView('home');
     loadRecent();
   } else {
