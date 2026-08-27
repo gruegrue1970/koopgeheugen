@@ -201,6 +201,7 @@
       <button class="secondary" id="btnPhotoScan" style="flex:1;">📸 Of maak een foto van de code</button>
     </div>
     <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
+    <div id="photoDebug" class="muted hidden" style="padding: 8px 2px; font-size: 12px;"></div>
     <div class="manual-entry">
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
       <button class="secondary" id="btnManualLookup">Zoek</button>
@@ -515,21 +516,42 @@ $('btnScannerPhotoFallback').addEventListener('click', () => {
 });
 
 $('photoInput').addEventListener('change', async (e) => {
+  hide('photoDebug');
   const file = e.target.files[0];
   $('photoInput').value = '';
-  if (!file) return;
-  toast('Foto verwerken...');
+  if (!file) { showPhotoDebug('Geen foto ontvangen van de camera.'); return; }
+  showPhotoDebug('Foto ontvangen (' + Math.round(file.size / 1024) + ' KB), laden...');
   const url = URL.createObjectURL(file);
+  const img = new Image();
   try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('kon de foto niet laden'));
+      img.src = url;
+    });
+    showPhotoDebug('Foto geladen (' + img.naturalWidth + 'x' + img.naturalHeight + '), barcode zoeken...');
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
     const reader = new ZXing.BrowserMultiFormatReader();
-    const result = await reader.decodeFromImageUrl(url);
+    const result = reader.decode(binaryBitmap);
+    hide('photoDebug');
     handleScanResult(result.getText());
-  } catch (e) {
-    toast('Geen barcode gevonden in de foto, probeer het nog eens.');
+  } catch (err) {
+    showPhotoDebug('Geen barcode gevonden in de foto (' + (err && err.message ? err.message : 'onbekende fout') + '). Probeer dichterbij/rechter te fotograferen.');
   } finally {
     URL.revokeObjectURL(url);
   }
 });
+
+function showPhotoDebug(msg) {
+  const el = $('photoDebug');
+  el.textContent = msg;
+  show('photoDebug');
+}
 
 $('btnManualLookup').addEventListener('click', () => {
   const ean = $('manualEan').value.trim();
