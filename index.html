@@ -197,11 +197,7 @@
     </header>
 
     <button class="scan-cta" id="btnOpenScanner">📷 Scan een barcode</button>
-    <div class="manual-entry">
-      <button class="secondary" id="btnPhotoScan" style="flex:1;">📸 Of maak een foto van de code</button>
-    </div>
     <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
-    <div id="photoDebug" class="muted hidden" style="padding: 8px 2px; font-size: 12px;"></div>
     <div class="manual-entry">
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
       <button class="secondary" id="btnManualLookup">Zoek</button>
@@ -293,7 +289,8 @@
   <video id="scannerVideo" autoplay muted playsinline></video>
   <div class="scan-frame"></div>
   <div class="scanner-hint" id="scannerHint">Camera wordt gestart...</div>
-  <button id="btnScannerPhotoFallback" class="secondary" style="position:absolute; bottom:70px; left:50%; transform:translateX(-50%); background:rgba(255,255,255,.9);">Lukt scherpstellen niet? Maak een foto</button>
+  <div id="photoDebug" class="hidden" style="position:absolute; bottom:130px; left:16px; right:16px; background:rgba(0,0,0,.75); color:#fff; padding:10px 14px; border-radius:10px; font-size:13px; text-align:center;"></div>
+  <button id="btnTakePhoto" class="secondary" style="position:absolute; bottom:70px; left:50%; transform:translateX(-50%); background:rgba(255,255,255,.9);">📸 Foto nemen (niet scherp? probeer dit)</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -499,6 +496,7 @@ function closeScanner() {
   if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
   if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
   $('scannerVideo').srcObject = null;
+  hide('photoDebug');
   hide('scannerOverlay');
 }
 
@@ -508,20 +506,35 @@ function handleScanResult(ean) {
   lookupAndOpen(ean);
 }
 
-// ---------- photo fallback (native camera, better focus than live video) ----------
-$('btnPhotoScan').addEventListener('click', () => $('photoInput').click());
-$('btnScannerPhotoFallback').addEventListener('click', () => {
-  closeScanner();
-  $('photoInput').click();
-});
+// ---------- still-photo capture, taken in-page from the live stream (no app switch, no page reload risk) ----------
+$('btnTakePhoto').addEventListener('click', takeStillPhoto);
 
-$('photoInput').addEventListener('change', async (e) => {
-  hide('photoDebug');
-  const file = e.target.files[0];
-  $('photoInput').value = '';
-  if (!file) { showPhotoDebug('Geen foto ontvangen van de camera.'); return; }
-  showPhotoDebug('Foto ontvangen (' + Math.round(file.size / 1024) + ' KB), laden...');
-  const url = URL.createObjectURL(file);
+async function takeStillPhoto() {
+  if (!currentStream) { showPhotoDebug('Camera niet actief.'); return; }
+  const track = currentStream.getVideoTracks()[0];
+  try {
+    showPhotoDebug('Foto nemen...');
+    let blob;
+    if ('ImageCapture' in window) {
+      const imageCapture = new ImageCapture(track);
+      blob = await imageCapture.takePhoto();
+    } else {
+      const video = $('scannerVideo');
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    }
+    await decodeBlobForBarcode(blob);
+  } catch (err) {
+    showPhotoDebug('Foto nemen mislukt: ' + (err && err.message ? err.message : err));
+  }
+}
+
+async function decodeBlobForBarcode(blob) {
+  showPhotoDebug('Foto genomen (' + Math.round(blob.size / 1024) + ' KB), laden...');
+  const url = URL.createObjectURL(blob);
   const img = new Image();
   try {
     await new Promise((resolve, reject) => {
@@ -541,10 +554,18 @@ $('photoInput').addEventListener('change', async (e) => {
     hide('photoDebug');
     handleScanResult(result.getText());
   } catch (err) {
-    showPhotoDebug('Geen barcode gevonden in de foto (' + (err && err.message ? err.message : 'onbekende fout') + '). Probeer dichterbij/rechter te fotograferen.');
+    showPhotoDebug('Geen barcode gevonden (' + (err && err.message ? err.message : 'onbekende fout') + '). Probeer opnieuw scherp te stellen en nog een foto.');
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+$('photoInput').addEventListener('change', async (e) => {
+  hide('photoDebug');
+  const file = e.target.files[0];
+  $('photoInput').value = '';
+  if (!file) return;
+  await decodeBlobForBarcode(file);
 });
 
 function showPhotoDebug(msg) {
