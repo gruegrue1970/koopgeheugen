@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v6</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v7</div>
       </div>
     </header>
     <div class="card">
@@ -362,7 +362,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v6';
+    $('homeGreeting').textContent = currentUser.email + ' · build v7';
     switchView('home');
     loadRecent();
   } else {
@@ -534,22 +534,17 @@ async function takeStillPhoto() {
 }
 
 async function decodeBlobForBarcode(blob) {
-  showPhotoDebug('Foto genomen (' + Math.round(blob.size / 1024) + ' KB), laden...');
+  showPhotoDebug('Foto genomen (' + Math.round(blob.size / 1024) + ' KB), barcode zoeken...');
+  const url = URL.createObjectURL(blob);
   try {
-    const bitmap = await createImageBitmap(blob);
-    showPhotoDebug('Foto geladen (' + bitmap.width + 'x' + bitmap.height + '), barcode zoeken...');
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    canvas.getContext('2d').drawImage(bitmap, 0, 0);
-    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
     const reader = new ZXing.BrowserMultiFormatReader();
-    const result = reader.decode(binaryBitmap);
+    const result = await reader.decodeFromImageUrl(url);
     hide('photoDebug');
     handleScanResult(result.getText());
   } catch (err) {
     showPhotoDebug('Geen barcode gevonden (' + (err && err.message ? err.message : 'onbekende fout') + '). Probeer opnieuw scherp te stellen en nog een foto.');
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -768,7 +763,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v6';
+    $('homeGreeting').textContent = currentUser.email + ' · build v7';
     switchView('home');
     loadRecent();
   } else {
