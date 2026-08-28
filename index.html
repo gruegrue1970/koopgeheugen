@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v13</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v14</div>
       </div>
     </header>
     <div class="card">
@@ -289,7 +289,7 @@
   <div class="scanner-topbar">
     <button id="btnCloseScanner">✕ Sluiten</button>
     <span style="color:#fff; font-size:13px;">Richt op de barcode</span>
-    <span style="width:70px;"></span>
+    <button id="btnSwitchCamera" class="hidden">🔄 Andere camera</button>
   </div>
   <video id="scannerVideo" autoplay muted playsinline></video>
   <div class="scan-frame"></div>
@@ -315,6 +315,8 @@ let selectedBuyAgain = undefined;
 let codeReader = null;
 let currentStream = null;
 let allRecent = [];
+let availableCameras = [];
+let currentCameraIndex = 0;
 
 // ---------- helpers ----------
 function $(id) { return document.getElementById(id); }
@@ -366,7 +368,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v13';
+    $('homeGreeting').textContent = currentUser.email + ' · build v14';
     switchView('home');
     loadRecent();
   } else {
@@ -443,6 +445,7 @@ $('btnBackHome').addEventListener('click', () => { switchView('home'); loadRecen
 // ---------- scanner ----------
 $('btnOpenScanner').addEventListener('click', openScanner);
 $('btnCloseScanner').addEventListener('click', closeScanner);
+$('btnSwitchCamera').addEventListener('click', switchCamera);
 
 function buildBarcodeHints(tryHarder) {
   const hints = new Map();
@@ -458,13 +461,33 @@ async function openScanner() {
   show('scannerOverlay');
   $('scannerHint').textContent = 'Camera wordt gestart...';
   codeReader = new ZXing.BrowserMultiFormatReader(buildBarcodeHints(false));
-  const constraints = {
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    }
-  };
+  availableCameras = [];
+  currentCameraIndex = 0;
+  await startCameraStream({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+  });
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableCameras = devices.filter(d => d.kind === 'videoinput');
+    if (availableCameras.length > 1) show('btnSwitchCamera'); else hide('btnSwitchCamera');
+    const activeDeviceId = currentStream && currentStream.getVideoTracks()[0].getSettings().deviceId;
+    const idx = availableCameras.findIndex(d => d.deviceId === activeDeviceId);
+    if (idx >= 0) currentCameraIndex = idx;
+  } catch (e) {}
+}
+
+async function switchCamera() {
+  if (availableCameras.length < 2) return;
+  currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+  const device = availableCameras[currentCameraIndex];
+  $('scannerHint').textContent = 'Wisselen naar andere camera...';
+  await startCameraStream({ video: { deviceId: { exact: device.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+}
+
+async function startCameraStream(constraints) {
+  if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+  if (codeReader) { try { codeReader.reset(); } catch (e) {} }
+  codeReader = new ZXing.BrowserMultiFormatReader(buildBarcodeHints(false));
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     currentStream = stream;
@@ -506,6 +529,8 @@ function closeScanner() {
   if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
   if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
   $('scannerVideo').srcObject = null;
+  availableCameras = [];
+  hide('btnSwitchCamera');
   hidePhotoDebug();
   hide('scannerOverlay');
 }
@@ -787,7 +812,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v13';
+    $('homeGreeting').textContent = currentUser.email + ' · build v14';
     switchView('home');
     loadRecent();
   } else {
