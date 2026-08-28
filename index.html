@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v20</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v21</div>
       </div>
     </header>
     <div class="card">
@@ -273,6 +273,8 @@
         <select id="itemCategory"></select>
       </div>
     </div>
+
+    <div id="communityBox" class="muted center hidden" style="padding: 2px 0 12px; font-size:13px;"></div>
 
     <div class="card hidden" id="historyCard">
       <div class="summary-box">
@@ -405,7 +407,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v20';
+    $('homeGreeting').textContent = currentUser.email + ' · build v21';
     switchView('home');
     loadRecent();
   } else {
@@ -918,7 +920,21 @@ function renderProductHeader(p) {
   $('itemCategory').value = p.category || '';
 }
 
+async function loadCommunityRating() {
+  const isPlace = currentKind === 'place';
+  hide('communityBox');
+  const { data, error } = isPlace
+    ? await sb.rpc('place_community_rating', { target_place_id: currentPlaceId })
+    : await sb.rpc('product_community_rating', { target_ean: currentEan });
+  if (error || !data || !data[0] || !data[0].review_count) return;
+  const { review_count, avg_rating } = data[0];
+  const label = isPlace ? 'keer beoordeeld' : 'keer beoordeeld';
+  $('communityBox').textContent = `🌍 Andere gebruikers: ${starsStr(avg_rating)} (${Number(avg_rating).toFixed(1)}, ${review_count}x ${label})`;
+  show('communityBox');
+}
+
 async function loadHistory() {
+  await loadCommunityRating();
   const isPlace = currentKind === 'place';
   let query = sb.from('reviews').select('*').order('purchased_at', { ascending: false });
   query = isPlace ? query.eq('place_id', currentPlaceId) : query.eq('ean', currentEan);
@@ -1066,7 +1082,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v20';
+    $('homeGreeting').textContent = currentUser.email + ' · build v21';
     switchView('home');
     loadRecent();
   } else {
