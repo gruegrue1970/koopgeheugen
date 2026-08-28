@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v7</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v8</div>
       </div>
     </header>
     <div class="card">
@@ -362,7 +362,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v7';
+    $('homeGreeting').textContent = currentUser.email + ' · build v8';
     switchView('home');
     loadRecent();
   } else {
@@ -511,38 +511,40 @@ function handleScanResult(ean) {
 $('btnTakePhoto').addEventListener('click', takeStillPhoto);
 
 async function takeStillPhoto() {
-  if (!currentStream) { showPhotoDebug('Camera niet actief.'); return; }
-  const track = currentStream.getVideoTracks()[0];
+  const video = $('scannerVideo');
+  if (!video.videoWidth || !video.videoHeight) {
+    showPhotoDebug('Camera nog niet klaar, wacht heel even en probeer opnieuw.');
+    return;
+  }
   try {
-    showPhotoDebug('Foto nemen...');
-    let blob;
-    if ('ImageCapture' in window) {
-      const imageCapture = new ImageCapture(track);
-      blob = await imageCapture.takePhoto();
-    } else {
-      const video = $('scannerVideo');
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-    }
-    await decodeBlobForBarcode(blob);
+    showPhotoDebug('Foto vastleggen...');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    await decodeImageUrlForBarcode(dataUrl);
   } catch (err) {
     showPhotoDebug('Foto nemen mislukt: ' + (err && err.message ? err.message : err));
   }
 }
 
-async function decodeBlobForBarcode(blob) {
-  showPhotoDebug('Foto genomen (' + Math.round(blob.size / 1024) + ' KB), barcode zoeken...');
-  const url = URL.createObjectURL(blob);
+async function decodeImageUrlForBarcode(url) {
+  showPhotoDebug('Barcode zoeken...');
   try {
     const reader = new ZXing.BrowserMultiFormatReader();
     const result = await reader.decodeFromImageUrl(url);
     hide('photoDebug');
     handleScanResult(result.getText());
   } catch (err) {
-    showPhotoDebug('Geen barcode gevonden (' + (err && err.message ? err.message : 'onbekende fout') + '). Probeer opnieuw scherp te stellen en nog een foto.');
+    showPhotoDebug('Geen barcode gevonden (' + (err && err.message ? err.message : 'onbekende fout') + '). Richt beter/dichterbij en probeer opnieuw.');
+  }
+}
+
+async function decodeBlobForBarcode(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    await decodeImageUrlForBarcode(url);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -763,7 +765,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v7';
+    $('homeGreeting').textContent = currentUser.email + ' · build v8';
     switchView('home');
     loadRecent();
   } else {
