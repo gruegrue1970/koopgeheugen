@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v19</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v20</div>
       </div>
     </header>
     <div class="card">
@@ -270,7 +270,7 @@
       </div>
       <div style="margin-top:12px;">
         <label id="categoryLabel" style="margin-top:0;">Categorie (optioneel)</label>
-        <input id="itemCategory" placeholder="bijv. Snacks, Wijn, Schoonmaak">
+        <select id="itemCategory"></select>
       </div>
     </div>
 
@@ -405,7 +405,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v19';
+    $('homeGreeting').textContent = currentUser.email + ' · build v20';
     switchView('home');
     loadRecent();
   } else {
@@ -616,12 +616,32 @@ function renderPlaceHeader(p) {
   $('itemCategory').value = p.type || '';
 }
 
+const PRODUCT_CATEGORIES = ['Eten', 'Drinken', 'Wijn & Alcohol', 'Snacks & Snoep', 'Zuivel & Eieren', 'Schoonmaak & Huishouden', 'Verzorging & Cosmetica', 'Overig'];
+const PLACE_TYPES = ['Restaurant', 'Café / Bar', 'Snackbar / Fastfood', 'Hotel', 'Winkel', 'Dienstverlener / Bedrijf', 'Overig'];
+
 function applyKindUI() {
   const isPlace = currentKind === 'place';
-  $('categoryLabel').textContent = isPlace ? 'Soort (bijv. Restaurant, Café)' : 'Categorie (optioneel)';
-  $('itemCategory').placeholder = isPlace ? 'Restaurant, Café, Bar...' : 'bijv. Snacks, Wijn, Schoonmaak';
+  $('categoryLabel').textContent = isPlace ? 'Soort' : 'Categorie';
   $('buyAgainLabel').textContent = isPlace ? 'Zou je hier opnieuw eten/langsgaan?' : 'Zou je het opnieuw kopen?';
   if (isPlace) hide('storeField'); else show('storeField');
+
+  const options = isPlace ? PLACE_TYPES : PRODUCT_CATEGORIES;
+  const select = $('itemCategory');
+  select.innerHTML = `<option value="">${isPlace ? 'Kies een soort' : 'Kies een categorie'}</option>` +
+    options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+}
+
+function guessProductCategory(rawCategories) {
+  if (!rawCategories) return null;
+  const s = rawCategories.toLowerCase();
+  if (/wine|wijn|beer|bier|alcohol|spirits|sterke ?drank/.test(s)) return 'Wijn & Alcohol';
+  if (/dairy|zuivel|cheese|kaas|\bmilk\b|melk|yog[hu]rt|\begg/.test(s)) return 'Zuivel & Eieren';
+  if (/snack|candy|snoep|chips|chocolate|chocola|cookie|koek/.test(s)) return 'Snacks & Snoep';
+  if (/drink|beverage|frisdrank|juice|\bsap\b|\bwater\b|soda/.test(s)) return 'Drinken';
+  if (/clean|schoonmaak|detergent|wasmiddel|household|huishoud/.test(s)) return 'Schoonmaak & Huishouden';
+  if (/cosmetic|verzorging|shampoo|\bsoap\b|zeep|deodorant|\bcream\b|creme/.test(s)) return 'Verzorging & Cosmetica';
+  if (/food|voeding|meal|maaltijd|meat|vlees|fish|\bvis\b|bread|brood|fruit|vegetable|groente/.test(s)) return 'Eten';
+  return null;
 }
 
 // ---------- scanner ----------
@@ -849,7 +869,7 @@ async function lookupAndOpen(ean) {
   let name = product && product.status === 1 ? product.product.product_name : null;
   let brand = product && product.status === 1 ? product.product.brands : null;
   let image = product && product.status === 1 ? product.product.image_url : null;
-  let category = product && product.status === 1 ? firstCategory(product.product.categories) : null;
+  let category = product && product.status === 1 ? guessProductCategory(product.product.categories) : null;
 
   // 3. try Open Products Facts if not found
   if (!name) {
@@ -858,7 +878,7 @@ async function lookupAndOpen(ean) {
       name = p2.product.product_name;
       brand = p2.product.brands;
       image = p2.product.image_url;
-      category = firstCategory(p2.product.categories);
+      category = guessProductCategory(p2.product.categories);
     }
   }
 
@@ -875,11 +895,6 @@ async function lookupAndOpen(ean) {
   }
 }
 
-function firstCategory(categories) {
-  if (!categories) return null;
-  const first = categories.split(',')[0].trim();
-  return first.replace(/^\w+:/, '') || null;
-}
 
 async function tryFetch(url) {
   try {
@@ -1051,7 +1066,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v19';
+    $('homeGreeting').textContent = currentUser.email + ' · build v20';
     switchView('home');
     loadRecent();
   } else {
