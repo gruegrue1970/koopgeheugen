@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v15</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v16</div>
       </div>
     </header>
     <div class="card">
@@ -368,7 +368,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v15';
+    $('homeGreeting').textContent = currentUser.email + ' · build v16';
     switchView('home');
     loadRecent();
   } else {
@@ -457,15 +457,31 @@ function buildBarcodeHints(tryHarder) {
   return hints;
 }
 
+function getSavedCameraId() {
+  try { return localStorage.getItem('koopgeheugen_camera_id'); } catch (e) { return null; }
+}
+
+function saveCameraId(id) {
+  if (!id) return;
+  try { localStorage.setItem('koopgeheugen_camera_id', id); } catch (e) {}
+}
+
 async function openScanner() {
   show('scannerOverlay');
   $('scannerHint').textContent = 'Camera wordt gestart...';
   codeReader = new ZXing.BrowserMultiFormatReader(buildBarcodeHints(false));
   availableCameras = [];
   currentCameraIndex = 0;
-  await startCameraStream({
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-  });
+  const savedId = getSavedCameraId();
+  const started = savedId && await startCameraStream(
+    { video: { deviceId: { exact: savedId }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+    /* silent */ true
+  );
+  if (!started) {
+    await startCameraStream({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+  }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     availableCameras = devices.filter(d => d.kind === 'videoinput');
@@ -484,7 +500,7 @@ async function switchCamera() {
   await startCameraStream({ video: { deviceId: { exact: device.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
 }
 
-async function startCameraStream(constraints) {
+async function startCameraStream(constraints, silent) {
   if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
   if (codeReader) { try { codeReader.reset(); } catch (e) {} }
   codeReader = new ZXing.BrowserMultiFormatReader(buildBarcodeHints(false));
@@ -501,7 +517,9 @@ async function startCameraStream(constraints) {
       }
     });
     $('scannerHint').textContent = 'Richt de camera op de barcode';
+    return true;
   } catch (e) {
+    if (silent) return false;
     let msg = 'Kon camera niet openen: ' + (e && e.message ? e.message : e);
     if (e && e.name === 'NotAllowedError') {
       msg = 'Camera-toegang is geblokkeerd. Tik op het slotje naast de adresbalk, zet Camera op "Toestaan" en probeer opnieuw.';
@@ -509,6 +527,7 @@ async function startCameraStream(constraints) {
       msg = 'Geen camera gevonden op dit toestel.';
     }
     $('scannerHint').textContent = msg;
+    return false;
   }
 }
 
@@ -536,6 +555,10 @@ function closeScanner() {
 }
 
 function handleScanResult(ean) {
+  if (currentStream) {
+    const settings = currentStream.getVideoTracks()[0].getSettings();
+    if (settings.deviceId) saveCameraId(settings.deviceId);
+  }
   closeScanner();
   toast('Gescand: ' + ean);
   lookupAndOpen(ean);
@@ -812,7 +835,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v15';
+    $('homeGreeting').textContent = currentUser.email + ' · build v16';
     switchView('home');
     loadRecent();
   } else {
