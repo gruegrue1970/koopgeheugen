@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v8</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v9</div>
       </div>
     </header>
     <div class="card">
@@ -198,7 +198,11 @@
     </header>
 
     <button class="scan-cta" id="btnOpenScanner">📷 Scan een barcode</button>
+    <div class="manual-entry">
+      <button class="secondary" id="btnPhotoScan" style="flex:1;">🎯 Scherpstellen lukt niet? Gebruik je camera-app</button>
+    </div>
     <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
+    <div id="homePhotoDebug" class="muted hidden" style="padding: 8px 2px; font-size: 12px;"></div>
     <div class="manual-entry">
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
       <button class="secondary" id="btnManualLookup">Zoek</button>
@@ -362,7 +366,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v8';
+    $('homeGreeting').textContent = currentUser.email + ' · build v9';
     switchView('home');
     loadRecent();
   } else {
@@ -497,7 +501,7 @@ function closeScanner() {
   if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
   if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
   $('scannerVideo').srcObject = null;
-  hide('photoDebug');
+  hidePhotoDebug();
   hide('scannerOverlay');
 }
 
@@ -534,7 +538,7 @@ async function decodeImageUrlForBarcode(url) {
   try {
     const reader = new ZXing.BrowserMultiFormatReader();
     const result = await reader.decodeFromImageUrl(url);
-    hide('photoDebug');
+    hidePhotoDebug();
     handleScanResult(result.getText());
   } catch (err) {
     showPhotoDebug('Geen barcode gevonden (' + (err && err.message ? err.message : 'onbekende fout') + '). Richt beter/dichterbij en probeer opnieuw.');
@@ -550,18 +554,31 @@ async function decodeBlobForBarcode(blob) {
   }
 }
 
+$('btnPhotoScan').addEventListener('click', () => {
+  showPhotoDebug('Camera-app openen...');
+  $('photoInput').click();
+});
+
 $('photoInput').addEventListener('change', async (e) => {
-  hide('photoDebug');
   const file = e.target.files[0];
   $('photoInput').value = '';
-  if (!file) return;
+  if (!file) { showPhotoDebug('Geen foto ontvangen van de camera-app.'); return; }
+  showPhotoDebug('Foto ontvangen (' + Math.round(file.size / 1024) + ' KB), barcode zoeken...');
   await decodeBlobForBarcode(file);
 });
 
 function showPhotoDebug(msg) {
-  const el = $('photoDebug');
-  el.textContent = msg;
-  show('photoDebug');
+  for (const id of ['photoDebug', 'homePhotoDebug']) {
+    const el = $(id);
+    if (!el) continue;
+    el.textContent = msg;
+    show(id);
+  }
+}
+
+function hidePhotoDebug() {
+  hide('photoDebug');
+  hide('homePhotoDebug');
 }
 
 $('btnManualLookup').addEventListener('click', () => {
@@ -765,7 +782,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v8';
+    $('homeGreeting').textContent = currentUser.email + ' · build v9';
     switchView('home');
     loadRecent();
   } else {
