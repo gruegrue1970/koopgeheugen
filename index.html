@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v17</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v18</div>
       </div>
     </header>
     <div class="card">
@@ -207,16 +207,32 @@
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
       <button class="secondary" id="btnManualLookup">Zoek</button>
     </div>
+    <div class="manual-entry">
+      <button class="secondary" id="btnAddPlace" style="flex:1;">🍽️ Restaurant of bedrijf toevoegen</button>
+    </div>
 
     <div class="card" style="margin-top:18px;">
-      <label style="margin-top:0;">Zoeken in jouw producten</label>
-      <input id="searchBox" type="text" placeholder="Naam of merk...">
+      <label style="margin-top:0;">Zoeken in jouw geschiedenis</label>
+      <input id="searchBox" type="text" placeholder="Naam, merk of restaurant...">
     </div>
 
     <div class="card">
       <div id="recentList"></div>
-      <div id="recentEmpty" class="muted center hidden" style="padding: 10px 0;">Nog niets gescand. Scan je eerste product hierboven!</div>
+      <div id="recentEmpty" class="muted center hidden" style="padding: 10px 0;">Nog niets bijgehouden. Scan een product of voeg een restaurant toe!</div>
       <div id="recentLoading" class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- PLACE SEARCH VIEW -->
+  <div id="view-place-search" class="hidden">
+    <header class="topbar">
+      <button class="ghost" id="btnBackHomeFromPlace">← Terug</button>
+    </header>
+    <div class="card">
+      <label style="margin-top:0;">Naam van restaurant/bedrijf</label>
+      <input id="placeSearchInput" placeholder="Typ om te zoeken of toe te voegen...">
+      <div id="placeSearchResults" style="margin-top:6px;"></div>
+      <button id="btnCreatePlace" class="hidden" style="margin-top:10px; width:100%;"></button>
     </div>
   </div>
 
@@ -242,6 +258,10 @@
         <label>Merk (optioneel)</label>
         <input id="manualProductBrand" placeholder="Merk">
       </div>
+      <div style="margin-top:12px;">
+        <label id="categoryLabel" style="margin-top:0;">Categorie (optioneel)</label>
+        <input id="itemCategory" placeholder="bijv. Snacks, Wijn, Schoonmaak">
+      </div>
     </div>
 
     <div class="card hidden" id="historyCard">
@@ -259,7 +279,7 @@
       <div class="star-picker" id="starPicker">
         <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
       </div>
-      <label>Zou je het opnieuw kopen?</label>
+      <label id="buyAgainLabel">Zou je het opnieuw kopen?</label>
       <div class="toggle-group" id="buyAgainGroup">
         <button type="button" data-v="true">Ja</button>
         <button type="button" data-v="null">Twijfel</button>
@@ -267,6 +287,10 @@
       </div>
       <label>Notitie</label>
       <textarea id="reviewNote" rows="3" placeholder="Bijv. te zoet, prima prijs-kwaliteit, niet meer kopen..."></textarea>
+      <div id="storeField">
+        <label>Winkel (optioneel)</label>
+        <input id="reviewStore" placeholder="Bijv. Albert Heijn, Lidl...">
+      </div>
       <div class="row">
         <div>
           <label>Prijs (optioneel)</label>
@@ -310,6 +334,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let currentEan = null;
 let currentProduct = null;
+let currentKind = 'product';
+let currentPlaceId = null;
+let currentPlace = null;
 let selectedRating = 0;
 let selectedBuyAgain = undefined;
 let codeReader = null;
@@ -333,7 +360,7 @@ function starsStr(n) {
   return '★★★★★'.slice(0, r) + '☆☆☆☆☆'.slice(0, 5 - r);
 }
 function switchView(name) {
-  ['auth', 'home', 'product'].forEach(v => hide('view-' + v));
+  ['auth', 'home', 'product', 'place-search'].forEach(v => hide('view-' + v));
   show('view-' + name);
 }
 
@@ -368,7 +395,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v17';
+    $('homeGreeting').textContent = currentUser.email + ' · build v18';
     switchView('home');
     loadRecent();
   } else {
@@ -381,23 +408,28 @@ async function loadRecent() {
   show('recentLoading');
   hide('recentEmpty');
   $('recentList').innerHTML = '';
-  const { data, error } = await sb
-    .from('reviews')
-    .select('id, ean, rating, would_buy_again, note, price, purchased_at, created_at, products(name, brand, image_url)')
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const [{ data: productReviews, error: err1 }, { data: placeReviews, error: err2 }] = await Promise.all([
+    sb.from('reviews').select('id, ean, rating, would_buy_again, note, price, purchased_at, created_at, products(name, brand, image_url)')
+      .not('ean', 'is', null).order('created_at', { ascending: false }).limit(50),
+    sb.from('reviews').select('id, place_id, rating, would_buy_again, note, price, purchased_at, created_at, places(name, type)')
+      .not('place_id', 'is', null).order('created_at', { ascending: false }).limit(50)
+  ]);
   hide('recentLoading');
-  if (error) { toast('Kon geschiedenis niet laden: ' + error.message); return; }
+  if (err1 || err2) { toast('Kon geschiedenis niet laden: ' + ((err1 || err2).message)); return; }
 
-  // group by ean, keep most recent review + avg rating per ean
-  const byEan = new Map();
-  for (const r of data) {
-    if (!byEan.has(r.ean)) {
-      byEan.set(r.ean, { ean: r.ean, product: r.products, ratings: [], latest: r.created_at, mostRecentNote: r.note });
-    }
-    byEan.get(r.ean).ratings.push(r.rating);
+  // group by target (ean or place), keep most recent review + avg rating per target
+  const grouped = new Map();
+  for (const r of (productReviews || [])) {
+    const key = 'p:' + r.ean;
+    if (!grouped.has(key)) grouped.set(key, { kind: 'product', ean: r.ean, product: r.products, ratings: [], latest: r.created_at });
+    grouped.get(key).ratings.push(r.rating);
   }
-  allRecent = Array.from(byEan.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
+  for (const r of (placeReviews || [])) {
+    const key = 'l:' + r.place_id;
+    if (!grouped.has(key)) grouped.set(key, { kind: 'place', placeId: r.place_id, place: r.places, ratings: [], latest: r.created_at });
+    grouped.get(key).ratings.push(r.rating);
+  }
+  allRecent = Array.from(grouped.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
   renderRecent(allRecent);
 }
 
@@ -410,18 +442,20 @@ function renderRecent(list) {
     const avg = item.ratings.reduce((a, b) => a + b, 0) / item.ratings.length;
     const div = document.createElement('div');
     div.className = 'scan-list-item';
-    const name = item.product ? item.product.name : item.ean;
-    const brand = item.product && item.product.brand ? item.product.brand : '';
-    const img = item.product && item.product.image_url;
+    const isPlace = item.kind === 'place';
+    const name = isPlace ? (item.place ? item.place.name : 'Onbekend') : (item.product ? item.product.name : item.ean);
+    const subtitle = isPlace ? (item.place && item.place.type ? item.place.type : '') : (item.product && item.product.brand ? item.product.brand : '');
+    const img = !isPlace && item.product && item.product.image_url;
+    const countLabel = isPlace ? `${item.ratings.length}x geweest` : `${item.ratings.length}x gekocht`;
     div.innerHTML = `
-      ${img ? `<img class="thumb" src="${img}">` : `<div class="thumb-fallback">📦</div>`}
+      ${img ? `<img class="thumb" src="${img}">` : `<div class="thumb-fallback">${isPlace ? '🍽️' : '📦'}</div>`}
       <div class="item-main">
         <div class="name">${escapeHtml(name)}</div>
-        <div class="meta">${escapeHtml(brand)}${brand ? ' · ' : ''}${item.ratings.length}x gekocht</div>
+        <div class="meta">${escapeHtml(subtitle)}${subtitle ? ' · ' : ''}${countLabel}</div>
       </div>
       <div class="stars">${starsStr(avg)}</div>
     `;
-    div.addEventListener('click', () => lookupAndOpen(item.ean));
+    div.addEventListener('click', () => isPlace ? openPlace(item.placeId, item.place ? { id: item.placeId, ...item.place } : null) : lookupAndOpen(item.ean));
     container.appendChild(div);
   }
 }
@@ -430,6 +464,11 @@ $('searchBox').addEventListener('input', (e) => {
   const q = e.target.value.trim().toLowerCase();
   if (!q) { renderRecent(allRecent); return; }
   renderRecent(allRecent.filter(item => {
+    if (item.kind === 'place') {
+      const name = (item.place && item.place.name || '').toLowerCase();
+      const type = (item.place && item.place.type || '').toLowerCase();
+      return name.includes(q) || type.includes(q);
+    }
     const name = (item.product && item.product.name || '').toLowerCase();
     const brand = (item.product && item.product.brand || '').toLowerCase();
     return name.includes(q) || brand.includes(q) || item.ean.includes(q);
@@ -441,6 +480,91 @@ function escapeHtml(s) {
 }
 
 $('btnBackHome').addEventListener('click', () => { switchView('home'); loadRecent(); });
+
+// ---------- places (restaurants/businesses) ----------
+$('btnAddPlace').addEventListener('click', () => {
+  switchView('place-search');
+  $('placeSearchInput').value = '';
+  $('placeSearchResults').innerHTML = '';
+  hide('btnCreatePlace');
+  $('placeSearchInput').focus();
+});
+$('btnBackHomeFromPlace').addEventListener('click', () => { switchView('home'); loadRecent(); });
+
+let placeSearchDebounce = null;
+$('placeSearchInput').addEventListener('input', (e) => {
+  clearTimeout(placeSearchDebounce);
+  const q = e.target.value.trim();
+  if (!q) { $('placeSearchResults').innerHTML = ''; hide('btnCreatePlace'); return; }
+  placeSearchDebounce = setTimeout(() => searchPlaces(q), 300);
+});
+
+async function searchPlaces(q) {
+  const { data } = await sb.from('places').select('*').ilike('name', `%${q}%`).limit(10);
+  const container = $('placeSearchResults');
+  container.innerHTML = '';
+  (data || []).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'scan-list-item';
+    div.innerHTML = `
+      <div class="thumb-fallback">🍽️</div>
+      <div class="item-main">
+        <div class="name">${escapeHtml(p.name)}</div>
+        <div class="meta">${escapeHtml(p.type || '')}</div>
+      </div>
+    `;
+    div.addEventListener('click', () => openPlace(p.id, p));
+    container.appendChild(div);
+  });
+  const exact = (data || []).some(p => p.name.toLowerCase() === q.toLowerCase());
+  if (!exact) {
+    $('btnCreatePlace').textContent = `+ Nieuw toevoegen: "${q}"`;
+    $('btnCreatePlace').onclick = () => createPlace(q);
+    show('btnCreatePlace');
+  } else {
+    hide('btnCreatePlace');
+  }
+}
+
+async function createPlace(name) {
+  const { data, error } = await sb.from('places').insert({ name }).select().single();
+  if (error) { toast('Kon niet aanmaken: ' + error.message); return; }
+  openPlace(data.id, data);
+}
+
+async function openPlace(placeId, place) {
+  currentKind = 'place';
+  currentPlaceId = placeId;
+  currentPlace = place;
+  if (!currentPlace) {
+    const { data } = await sb.from('places').select('*').eq('id', placeId).maybeSingle();
+    currentPlace = data;
+  }
+  switchView('product');
+  resetProductForm();
+  applyKindUI();
+  renderPlaceHeader(currentPlace);
+  hide('manualNameEntry');
+  loadHistory();
+}
+
+function renderPlaceHeader(p) {
+  hide('productImage');
+  show('productImageFallback');
+  $('productImageFallback').textContent = '🍽️';
+  $('productNameDisplay').textContent = p.name;
+  $('productBrandDisplay').textContent = p.type || '';
+  $('productEanDisplay').textContent = '';
+  $('itemCategory').value = p.type || '';
+}
+
+function applyKindUI() {
+  const isPlace = currentKind === 'place';
+  $('categoryLabel').textContent = isPlace ? 'Soort (bijv. Restaurant, Café)' : 'Categorie (optioneel)';
+  $('itemCategory').placeholder = isPlace ? 'Restaurant, Café, Bar...' : 'bijv. Snacks, Wijn, Schoonmaak';
+  $('buyAgainLabel').textContent = isPlace ? 'Zou je hier opnieuw eten/langsgaan?' : 'Zou je het opnieuw kopen?';
+  if (isPlace) hide('storeField'); else show('storeField');
+}
 
 // ---------- scanner ----------
 $('btnOpenScanner').addEventListener('click', openScanner);
@@ -642,9 +766,11 @@ $('btnManualLookup').addEventListener('click', () => {
 
 // ---------- product lookup ----------
 async function lookupAndOpen(ean) {
+  currentKind = 'product';
   currentEan = ean;
   switchView('product');
   resetProductForm();
+  applyKindUI();
   $('productNameDisplay').textContent = 'Zoeken...';
   $('productBrandDisplay').textContent = '';
   $('productEanDisplay').textContent = ean;
@@ -656,7 +782,7 @@ async function lookupAndOpen(ean) {
   if (existing) {
     currentProduct = existing;
     renderProductHeader(existing);
-    loadHistory(ean);
+    loadHistory();
     return;
   }
 
@@ -665,28 +791,36 @@ async function lookupAndOpen(ean) {
   let name = product && product.status === 1 ? product.product.product_name : null;
   let brand = product && product.status === 1 ? product.product.brands : null;
   let image = product && product.status === 1 ? product.product.image_url : null;
+  let category = product && product.status === 1 ? firstCategory(product.product.categories) : null;
 
   // 3. try Open Products Facts if not found
   if (!name) {
-    let p2 = await tryFetch(`https://world.openproductsfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,image_url`);
+    let p2 = await tryFetch(`https://world.openproductsfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,image_url,categories`);
     if (p2 && p2.status === 1) {
       name = p2.product.product_name;
       brand = p2.product.brands;
       image = p2.product.image_url;
+      category = firstCategory(p2.product.categories);
     }
   }
 
   if (name) {
-    currentProduct = { ean, name, brand, image_url: image, source: 'openfoodfacts' };
+    currentProduct = { ean, name, brand, image_url: image, category, source: 'openfoodfacts' };
     await sb.from('products').upsert(currentProduct);
     renderProductHeader(currentProduct);
-    loadHistory(ean);
+    loadHistory();
   } else {
-    currentProduct = { ean, name: null, brand: null, image_url: null, source: 'manual' };
+    currentProduct = { ean, name: null, brand: null, image_url: null, category: null, source: 'manual' };
     renderProductHeader(currentProduct);
     show('manualNameEntry');
-    loadHistory(ean);
+    loadHistory();
   }
+}
+
+function firstCategory(categories) {
+  if (!categories) return null;
+  const first = categories.split(',')[0].trim();
+  return first.replace(/^\w+:/, '') || null;
 }
 
 async function tryFetch(url) {
@@ -703,34 +837,38 @@ function renderProductHeader(p) {
     show('productImage'); hide('productImageFallback');
   } else {
     hide('productImage'); show('productImageFallback');
+    $('productImageFallback').textContent = '📦';
   }
   $('productNameDisplay').textContent = p.name || 'Onbekend product';
   $('productBrandDisplay').textContent = p.brand || '';
   $('productEanDisplay').textContent = p.ean;
+  $('itemCategory').value = p.category || '';
 }
 
-async function loadHistory(ean) {
-  const { data, error } = await sb
-    .from('reviews')
-    .select('*')
-    .eq('ean', ean)
-    .order('purchased_at', { ascending: false });
+async function loadHistory() {
+  const isPlace = currentKind === 'place';
+  let query = sb.from('reviews').select('*').order('purchased_at', { ascending: false });
+  query = isPlace ? query.eq('place_id', currentPlaceId) : query.eq('ean', currentEan);
+  const { data, error } = await query;
   if (error || !data || data.length === 0) { hide('historyCard'); return; }
 
   const avg = data.reduce((a, b) => a + b.rating, 0) / data.length;
   $('summaryStars').textContent = starsStr(avg);
   $('summaryAvg').textContent = avg.toFixed(1);
-  $('summaryCount').textContent = `Gemiddeld over ${data.length} keer gekocht`;
+  $('summaryCount').textContent = isPlace
+    ? `Gemiddeld over ${data.length} keer geweest`
+    : `Gemiddeld over ${data.length} keer gekocht`;
 
   const list = $('historyList');
   list.innerHTML = '';
   for (const r of data) {
     const div = document.createElement('div');
     div.className = 'history-entry';
-    const buyAgainLabel = r.would_buy_again === true ? '✅ opnieuw kopen' : r.would_buy_again === false ? '❌ niet opnieuw' : '🤔 twijfel';
+    const buyAgainLabel = r.would_buy_again === true ? (isPlace ? '✅ opnieuw' : '✅ opnieuw kopen') : r.would_buy_again === false ? (isPlace ? '❌ niet opnieuw' : '❌ niet opnieuw') : '🤔 twijfel';
     div.innerHTML = `
       <span class="stars">${starsStr(r.rating)}</span>
       <span class="hdate">${formatDate(r.purchased_at)} · ${buyAgainLabel}</span>
+      ${r.store ? `<div class="hprice">🏬 ${escapeHtml(r.store)}</div>` : ''}
       ${r.note ? `<div class="hnote">${escapeHtml(r.note)}</div>` : ''}
       ${r.price ? `<div class="hprice">€ ${Number(r.price).toFixed(2)}</div>` : ''}
     `;
@@ -752,10 +890,12 @@ function resetProductForm() {
   document.querySelectorAll('#buyAgainGroup button').forEach(b => b.classList.remove('selected'));
   $('reviewNote').value = '';
   $('reviewPrice').value = '';
+  $('reviewStore').value = '';
   $('reviewDate').value = new Date().toISOString().slice(0, 10);
   hide('productError');
   $('manualProductName').value = '';
   $('manualProductBrand').value = '';
+  $('itemCategory').value = '';
 }
 
 $('starPicker').addEventListener('click', (e) => {
@@ -782,26 +922,38 @@ $('btnSaveReview').addEventListener('click', async () => {
     return;
   }
 
-  // if product unknown, require manual name and save it
-  if (!currentProduct.name) {
-    const manualName = $('manualProductName').value.trim();
-    if (!manualName) {
-      $('productError').textContent = 'Vul een productnaam in.';
-      show('productError');
-      return;
+  if (currentKind === 'product') {
+    const category = $('itemCategory').value.trim() || null;
+    // if product unknown, require manual name and save it
+    if (!currentProduct.name) {
+      const manualName = $('manualProductName').value.trim();
+      if (!manualName) {
+        $('productError').textContent = 'Vul een productnaam in.';
+        show('productError');
+        return;
+      }
+      currentProduct = {
+        ean: currentEan,
+        name: manualName,
+        brand: $('manualProductBrand').value.trim() || null,
+        image_url: null,
+        category,
+        source: 'manual'
+      };
+    } else {
+      currentProduct = { ...currentProduct, category };
     }
-    currentProduct = {
-      ean: currentEan,
-      name: manualName,
-      brand: $('manualProductBrand').value.trim() || null,
-      image_url: null,
-      source: 'manual'
-    };
     const { error: upErr } = await sb.from('products').upsert(currentProduct);
     if (upErr) {
       $('productError').textContent = 'Kon product niet opslaan: ' + upErr.message;
       show('productError');
       return;
+    }
+  } else {
+    const type = $('itemCategory').value.trim() || null;
+    if (type !== (currentPlace.type || null)) {
+      currentPlace = { ...currentPlace, type };
+      await sb.from('places').update({ type }).eq('id', currentPlaceId);
     }
   }
 
@@ -809,10 +961,12 @@ $('btnSaveReview').addEventListener('click', async () => {
   btn.disabled = true;
   const { error } = await sb.from('reviews').insert({
     user_id: currentUser.id,
-    ean: currentEan,
+    ean: currentKind === 'product' ? currentEan : null,
+    place_id: currentKind === 'place' ? currentPlaceId : null,
     rating: selectedRating,
     would_buy_again: selectedBuyAgain === undefined ? null : selectedBuyAgain,
     note: $('reviewNote').value.trim() || null,
+    store: currentKind === 'product' ? ($('reviewStore').value.trim() || null) : null,
     price: $('reviewPrice').value ? Number($('reviewPrice').value) : null,
     purchased_at: $('reviewDate').value || new Date().toISOString().slice(0, 10)
   });
@@ -824,9 +978,13 @@ $('btnSaveReview').addEventListener('click', async () => {
     return;
   }
   toast('Beoordeling opgeslagen!');
-  renderProductHeader(currentProduct);
-  hide('manualNameEntry');
-  loadHistory(currentEan);
+  if (currentKind === 'product') {
+    renderProductHeader(currentProduct);
+    hide('manualNameEntry');
+  } else {
+    renderPlaceHeader(currentPlace);
+  }
+  loadHistory();
   resetProductForm();
 });
 
@@ -835,7 +993,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v17';
+    $('homeGreeting').textContent = currentUser.email + ' · build v18';
     switchView('home');
     loadRecent();
   } else {
