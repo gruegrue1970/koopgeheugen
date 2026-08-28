@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v16</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v17</div>
       </div>
     </header>
     <div class="card">
@@ -357,7 +357,7 @@ $('btnSignUp').addEventListener('click', async () => {
   }
   const { error } = await sb.auth.signUp({ email, password });
   if (error) { $('authError').textContent = error.message; show('authError'); return; }
-  $('authInfo').textContent = 'Account aangemaakt! Check je mail als bevestiging nodig is, en log daarna in.';
+  $('authInfo').textContent = 'Account aangemaakt! Je wordt automatisch ingelogd...';
   show('authInfo');
 });
 
@@ -368,7 +368,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v16';
+    $('homeGreeting').textContent = currentUser.email + ' · build v17';
     switchView('home');
     loadRecent();
   } else {
@@ -835,7 +835,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v16';
+    $('homeGreeting').textContent = currentUser.email + ' · build v17';
     switchView('home');
     loadRecent();
   } else {
