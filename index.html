@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v12</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v13</div>
       </div>
     </header>
     <div class="card">
@@ -197,12 +197,12 @@
       <button class="ghost" id="btnSignOut">Uitloggen</button>
     </header>
 
-    <button class="scan-cta" id="btnOpenScanner">📷 Scan een barcode</button>
-    <div class="manual-entry">
-      <button class="secondary" id="btnPhotoScan" style="flex:1;">🎯 Scherpstellen lukt niet? Kies "Camera" in het menu</button>
-    </div>
-    <input type="file" id="photoInput" accept="image/*" capture class="hidden">
+    <button class="scan-cta" id="btnPhotoScan">📸 Scan een barcode (kies "Camera" in het menu)</button>
+    <input type="file" id="photoInput" accept="image/*" class="hidden">
     <div id="homePhotoDebug" class="muted hidden" style="padding: 8px 2px; font-size: 12px;"></div>
+    <div class="manual-entry">
+      <button class="secondary" id="btnOpenScanner" style="flex:1;">📷 Of probeer live scannen</button>
+    </div>
     <div class="manual-entry">
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
       <button class="secondary" id="btnManualLookup">Zoek</button>
@@ -366,7 +366,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v12';
+    $('homeGreeting').textContent = currentUser.email + ' · build v13';
     switchView('home');
     loadRecent();
   } else {
@@ -787,7 +787,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v12';
+    $('homeGreeting').textContent = currentUser.email + ' · build v13';
     switchView('home');
     loadRecent();
   } else {
