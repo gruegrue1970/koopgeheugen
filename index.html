@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v10</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v11</div>
       </div>
     </header>
     <div class="card">
@@ -199,9 +199,9 @@
 
     <button class="scan-cta" id="btnOpenScanner">📷 Scan een barcode</button>
     <div class="manual-entry">
-      <button class="secondary" id="btnPhotoScan" style="flex:1;">🎯 Scherpstellen lukt niet? Gebruik je camera-app</button>
+      <button class="secondary" id="btnPhotoScan" style="flex:1;">🎯 Scherpstellen lukt niet? Kies "Camera" in het menu</button>
     </div>
-    <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
+    <input type="file" id="photoInput" accept="image/*" class="hidden">
     <div id="homePhotoDebug" class="muted hidden" style="padding: 8px 2px; font-size: 12px;"></div>
     <div class="manual-entry">
       <input id="manualEan" type="text" inputmode="numeric" placeholder="of typ een EAN-code">
@@ -366,7 +366,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v10';
+    $('homeGreeting').textContent = currentUser.email + ' · build v11';
     switchView('home');
     loadRecent();
   } else {
@@ -787,7 +787,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v10';
+    $('homeGreeting').textContent = currentUser.email + ' · build v11';
     switchView('home');
     loadRecent();
   } else {
