@@ -56,7 +56,7 @@
   button.danger { background: var(--danger); color: #fff; }
   button.ghost { background: transparent; color: var(--accent); padding: 8px 10px; font-weight: 600; }
   button:disabled { opacity: .5; cursor: default; }
-  input, textarea {
+  input, textarea, select {
     width: 100%; font: inherit; padding: 12px 13px; border-radius: 10px;
     border: 1px solid var(--border); background: var(--card); color: var(--text);
   }
@@ -166,7 +166,7 @@
       <div>
         <h1>Koopgeheugen</h1>
         <div class="sub">Onthoud of iets goed was, voordat je het opnieuw koopt</div>
-        <div class="muted" style="font-size:10px; margin-top:4px;">build v18</div>
+        <div class="muted" style="font-size:10px; margin-top:4px;">build v19</div>
       </div>
     </header>
     <div class="card">
@@ -214,6 +214,16 @@
     <div class="card" style="margin-top:18px;">
       <label style="margin-top:0;">Zoeken in jouw geschiedenis</label>
       <input id="searchBox" type="text" placeholder="Naam, merk of restaurant...">
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <label>Winkel</label>
+          <select id="filterStore"><option value="">Alle winkels</option></select>
+        </div>
+        <div>
+          <label>Categorie</label>
+          <select id="filterCategory"><option value="">Alle categorieën</option></select>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -395,7 +405,7 @@ $('btnSignOut').addEventListener('click', async () => {
 sb.auth.onAuthStateChange((event, session) => {
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v18';
+    $('homeGreeting').textContent = currentUser.email + ' · build v19';
     switchView('home');
     loadRecent();
   } else {
@@ -409,28 +419,41 @@ async function loadRecent() {
   hide('recentEmpty');
   $('recentList').innerHTML = '';
   const [{ data: productReviews, error: err1 }, { data: placeReviews, error: err2 }] = await Promise.all([
-    sb.from('reviews').select('id, ean, rating, would_buy_again, note, price, purchased_at, created_at, products(name, brand, image_url)')
-      .not('ean', 'is', null).order('created_at', { ascending: false }).limit(50),
+    sb.from('reviews').select('id, ean, rating, would_buy_again, note, price, store, purchased_at, created_at, products(name, brand, image_url, category)')
+      .not('ean', 'is', null).order('created_at', { ascending: false }).limit(200),
     sb.from('reviews').select('id, place_id, rating, would_buy_again, note, price, purchased_at, created_at, places(name, type)')
-      .not('place_id', 'is', null).order('created_at', { ascending: false }).limit(50)
+      .not('place_id', 'is', null).order('created_at', { ascending: false }).limit(200)
   ]);
   hide('recentLoading');
   if (err1 || err2) { toast('Kon geschiedenis niet laden: ' + ((err1 || err2).message)); return; }
 
-  // group by target (ean or place), keep most recent review + avg rating per target
+  // group by target (ean or place), keep most recent review + avg rating + store/category set per target
   const grouped = new Map();
   for (const r of (productReviews || [])) {
     const key = 'p:' + r.ean;
-    if (!grouped.has(key)) grouped.set(key, { kind: 'product', ean: r.ean, product: r.products, ratings: [], latest: r.created_at });
-    grouped.get(key).ratings.push(r.rating);
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        kind: 'product', ean: r.ean, product: r.products, ratings: [], latest: r.created_at,
+        stores: new Set(), category: r.products && r.products.category || null
+      });
+    }
+    const item = grouped.get(key);
+    item.ratings.push(r.rating);
+    if (r.store) item.stores.add(r.store);
   }
   for (const r of (placeReviews || [])) {
     const key = 'l:' + r.place_id;
-    if (!grouped.has(key)) grouped.set(key, { kind: 'place', placeId: r.place_id, place: r.places, ratings: [], latest: r.created_at });
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        kind: 'place', placeId: r.place_id, place: r.places, ratings: [], latest: r.created_at,
+        stores: new Set(), category: r.places && r.places.type || null
+      });
+    }
     grouped.get(key).ratings.push(r.rating);
   }
   allRecent = Array.from(grouped.values()).sort((a, b) => new Date(b.latest) - new Date(a.latest));
-  renderRecent(allRecent);
+  populateFilterOptions(allRecent);
+  applyFilters();
 }
 
 function renderRecent(list) {
@@ -460,10 +483,42 @@ function renderRecent(list) {
   }
 }
 
-$('searchBox').addEventListener('input', (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  if (!q) { renderRecent(allRecent); return; }
-  renderRecent(allRecent.filter(item => {
+$('searchBox').addEventListener('input', applyFilters);
+$('filterStore').addEventListener('change', applyFilters);
+$('filterCategory').addEventListener('change', applyFilters);
+
+function populateFilterOptions(list) {
+  const stores = new Set();
+  const categories = new Set();
+  for (const item of list) {
+    item.stores.forEach(s => stores.add(s));
+    if (item.category) categories.add(item.category);
+  }
+  fillSelect('filterStore', 'Alle winkels', stores);
+  fillSelect('filterCategory', 'Alle categorieën', categories);
+}
+
+function fillSelect(id, allLabel, values) {
+  const el = $(id);
+  const current = el.value;
+  el.innerHTML = `<option value="">${allLabel}</option>`;
+  Array.from(values).sort((a, b) => a.localeCompare(b)).forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    el.appendChild(opt);
+  });
+  if (Array.from(values).includes(current)) el.value = current;
+}
+
+function applyFilters() {
+  const q = $('searchBox').value.trim().toLowerCase();
+  const storeFilter = $('filterStore').value;
+  const categoryFilter = $('filterCategory').value;
+  const filtered = allRecent.filter(item => {
+    if (storeFilter && !item.stores.has(storeFilter)) return false;
+    if (categoryFilter && item.category !== categoryFilter) return false;
+    if (!q) return true;
     if (item.kind === 'place') {
       const name = (item.place && item.place.name || '').toLowerCase();
       const type = (item.place && item.place.type || '').toLowerCase();
@@ -471,9 +526,12 @@ $('searchBox').addEventListener('input', (e) => {
     }
     const name = (item.product && item.product.name || '').toLowerCase();
     const brand = (item.product && item.product.brand || '').toLowerCase();
-    return name.includes(q) || brand.includes(q) || item.ean.includes(q);
-  }));
-});
+    const category = (item.category || '').toLowerCase();
+    const storesText = Array.from(item.stores).join(' ').toLowerCase();
+    return name.includes(q) || brand.includes(q) || item.ean.includes(q) || category.includes(q) || storesText.includes(q);
+  });
+  renderRecent(filtered);
+}
 
 function escapeHtml(s) {
   return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -993,7 +1051,7 @@ $('btnSaveReview').addEventListener('click', async () => {
   const { data: { session } } = await sb.auth.getSession();
   currentUser = session ? session.user : null;
   if (currentUser) {
-    $('homeGreeting').textContent = currentUser.email + ' · build v18';
+    $('homeGreeting').textContent = currentUser.email + ' · build v19';
     switchView('home');
     loadRecent();
   } else {
